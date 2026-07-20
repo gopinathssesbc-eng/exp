@@ -1,5 +1,5 @@
 // REPLACE THIS URL WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_REPLACE_THIS_WITH_YOUR_URL/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTMJB4KovW1nLcB0S5d_7BZUmXnm28o8Iw_VlVivf--RJygFESnpvyG4-JFgzzBC3E/exec";
 
 // State
 let expenses = [];
