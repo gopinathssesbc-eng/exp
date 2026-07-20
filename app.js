@@ -5,6 +5,7 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTMJB4KovW1nLcB0S5d
 let expenses = [];
 let userPin = "";
 let chartInstance = null;
+let trendChartInstance = null;
 
 // DOM Elements
 const loginView = document.getElementById('login-view');
@@ -18,6 +19,7 @@ const monthlyTotalEl = document.getElementById('monthly-total');
 const yearlyTotalEl = document.getElementById('yearly-total');
 const recentExpensesList = document.getElementById('recent-expenses-list');
 const categoryChartCanvas = document.getElementById('category-chart');
+const trendChartCanvas = document.getElementById('trend-chart');
 
 const fabAdd = document.getElementById('fab-add');
 const addModal = document.getElementById('add-modal');
@@ -93,6 +95,10 @@ logoutBtn.addEventListener('click', () => {
         chartInstance.destroy();
         chartInstance = null;
     }
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+        trendChartInstance = null;
+    }
 });
 
 // Update Dashboard
@@ -130,6 +136,7 @@ const updateDashboard = () => {
     yearlyTotalEl.innerText = formatCurrency(yearlyTotal);
     
     updateChart(categoryTotals);
+    updateTrendChart();
     updateRecentList();
 };
 
@@ -201,6 +208,98 @@ const updateChart = (categoryTotals) => {
                 }
             },
             cutout: '70%'
+        }
+    });
+};
+
+const updateTrendChart = () => {
+    // Generate last 6 months labels
+    const labels = [];
+    const monthlyData = [];
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        labels.push(d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }));
+        monthlyData.push({ month: d.getMonth(), year: d.getFullYear(), total: 0 });
+    }
+    
+    // Sum up expenses
+    expenses.forEach(exp => {
+        const expDate = new Date(exp.Date);
+        if (isNaN(expDate.getTime())) return;
+        
+        const amount = parseFloat(exp.Amount) || 0;
+        const eMonth = expDate.getMonth();
+        const eYear = expDate.getFullYear();
+        
+        // Find if this matches one of our 6 months
+        const target = monthlyData.find(m => m.month === eMonth && m.year === eYear);
+        if (target) {
+            target.total += amount;
+        }
+    });
+    
+    const data = monthlyData.map(m => m.total);
+    
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+    }
+    
+    trendChartInstance = new Chart(trendChartCanvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    type: 'line',
+                    label: 'Trend',
+                    data: data,
+                    borderColor: '#10b981',
+                    backgroundColor: '#10b981',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: false
+                },
+                {
+                    type: 'bar',
+                    label: 'Expenses',
+                    data: data,
+                    backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                    borderColor: '#6366f1',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#94a3b8'
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        color: '#94a3b8'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#94a3b8', font: { family: 'Inter' } }
+                }
+            }
         }
     });
 };
