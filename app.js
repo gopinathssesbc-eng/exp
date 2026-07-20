@@ -337,14 +337,17 @@ fabAdd.addEventListener('click', () => {
     expDateInput.value = today;
     
     addModal.classList.add('show');
+    document.body.style.overflow = 'hidden';
 });
 
 closeModalBtn.addEventListener('click', () => {
     addModal.classList.remove('show');
+    document.body.style.overflow = '';
 });
 
 closeSuccessBtn.addEventListener('click', () => {
     successModal.classList.remove('show');
+    document.body.style.overflow = '';
 });
 
 // Form Submission
@@ -368,6 +371,7 @@ addExpenseForm.addEventListener('submit', async (e) => {
     
     showLoading("Adding Expense...");
     addModal.classList.remove('show');
+    document.body.style.overflow = '';
     
     try {
         const response = await fetch(SCRIPT_URL, {
@@ -391,6 +395,7 @@ addExpenseForm.addEventListener('submit', async (e) => {
             updateDashboard();
             addExpenseForm.reset();
             successModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
         }
     } catch (error) {
         console.error("Error submitting expense:", error);
