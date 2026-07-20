@@ -300,7 +300,30 @@ const updateTrendChart = () => {
                     labels: { color: '#94a3b8', font: { family: 'Inter' } }
                 }
             }
-        }
+        },
+        plugins: [{
+            id: 'barTotal',
+            afterDatasetsDraw: (chart, args, pluginOptions) => {
+                const { ctx } = chart;
+                ctx.save();
+                ctx.font = '600 11px Inter, sans-serif';
+                ctx.fillStyle = '#f8fafc';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                chart.data.datasets.forEach((dataset, i) => {
+                    if (dataset.type === 'bar') {
+                        const meta = chart.getDatasetMeta(i);
+                        meta.data.forEach((bar, index) => {
+                            const value = dataset.data[index];
+                            if (value > 0) {
+                                ctx.fillText(value, bar.x, bar.y - 5);
+                            }
+                        });
+                    }
+                });
+                ctx.restore();
+            }
+        }]
     });
 };
 
