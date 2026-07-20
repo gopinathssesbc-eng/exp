@@ -30,6 +30,9 @@ const expDateInput = document.getElementById('exp-date');
 const loadingOverlay = document.getElementById('loading-overlay');
 const loadingText = document.getElementById('loading-text');
 
+const successModal = document.getElementById('success-modal');
+const closeSuccessBtn = document.getElementById('close-success-btn');
+
 // Format Currency
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -340,6 +343,10 @@ closeModalBtn.addEventListener('click', () => {
     addModal.classList.remove('show');
 });
 
+closeSuccessBtn.addEventListener('click', () => {
+    successModal.classList.remove('show');
+});
+
 // Form Submission
 addExpenseForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -383,6 +390,7 @@ addExpenseForm.addEventListener('submit', async (e) => {
             });
             updateDashboard();
             addExpenseForm.reset();
+            successModal.classList.add('show');
         }
     } catch (error) {
         console.error("Error submitting expense:", error);
