@@ -80,6 +80,10 @@ function doPost(e) {
       sheet.getRange(row, 1, 1, 5).setValues([[date, amount, paidFrom, category, description]]);
       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense updated successfully" }))
         .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'delete' && row) {
+      sheet.deleteRow(row);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense deleted successfully" }))
+        .setMimeType(ContentService.MimeType.JSON);
     } else {
       // Append the row
       sheet.appendRow([date, amount, paidFrom, category, description]);
