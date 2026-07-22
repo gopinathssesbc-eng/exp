@@ -41,7 +41,7 @@ function doGet(e) {
       const headers = values[0];
       for (let i = 1; i < values.length; i++) {
         const row = values[i];
-        const obj = {};
+        const obj = { row: i + 1 };
         for (let j = 0; j < headers.length; j++) {
           obj[headers[j]] = row[j];
         }
@@ -74,13 +74,19 @@ function doPost(e) {
     }
     
     const sheet = setupSheet();
-    const { date, amount, paidFrom, category, description } = requestData;
+    const { action, row, date, amount, paidFrom, category, description } = requestData;
     
-    // Append the row
-    sheet.appendRow([date, amount, paidFrom, category, description]);
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense added successfully" }))
-      .setMimeType(ContentService.MimeType.JSON);
+    if (action === 'edit' && row) {
+      sheet.getRange(row, 1, 1, 5).setValues([[date, amount, paidFrom, category, description]]);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense updated successfully" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else {
+      // Append the row
+      sheet.appendRow([date, amount, paidFrom, category, description]);
+      
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense added successfully" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
       
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", error: error.message }))

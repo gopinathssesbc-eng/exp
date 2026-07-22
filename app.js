@@ -4,6 +4,7 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTMJB4KovW1nLcB0S5d
 // State
 let expenses = [];
 let userPin = "";
+let editingRowIndex = null;
 let chartInstance = null;
 let trendChartInstance = null;
 
@@ -164,11 +165,48 @@ const updateRecentList = () => {
                 <h4>${exp.Description || exp.Category}</h4>
                 <p>${dateStr} • ${exp.Category} • ${exp['Paid From']}</p>
             </div>
-            <div class="recent-item-amount text-danger">
-                -${formatCurrency(parseFloat(exp.Amount) || 0)}
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div class="recent-item-amount text-danger">
+                    -${formatCurrency(parseFloat(exp.Amount) || 0)}
+                </div>
+                <button class="icon-btn edit-btn" data-row="${exp.row}" title="Edit Expense">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
             </div>
         `;
         recentExpensesList.appendChild(div);
+    });
+
+    // Add event listeners to edit buttons
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const row = e.currentTarget.getAttribute('data-row');
+            const exp = expenses.find(e => e.row == row);
+            if (exp) {
+                editingRowIndex = row;
+                document.querySelector('#add-modal h2').innerText = 'Edit Expense';
+                document.getElementById('update-btn').innerText = 'Update';
+                
+                // Format date to YYYY-MM-DD
+                let formattedDate = "";
+                if (exp.Date) {
+                    const d = new Date(exp.Date);
+                    const yyyy = d.getFullYear();
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    formattedDate = `${yyyy}-${mm}-${dd}`;
+                }
+                
+                document.getElementById('exp-date').value = formattedDate;
+                document.getElementById('exp-amount').value = exp.Amount;
+                document.getElementById('exp-account').value = exp['Paid From'];
+                document.getElementById('exp-category').value = exp.Category;
+                document.getElementById('exp-desc').value = exp.Description;
+                
+                addModal.classList.add('show');
+                document.body.style.overflow = 'hidden';
+            }
+        });
     });
 };
 
@@ -332,6 +370,12 @@ const updateTrendChart = () => {
 
 // Modal Logic
 fabAdd.addEventListener('click', () => {
+    editingRowIndex = null;
+    document.querySelector('#add-modal h2').innerText = 'Add Expense';
+    document.getElementById('update-btn').innerText = 'Add';
+    
+    addExpenseForm.reset();
+    
     // Set default date to today
     const today = new Date().toISOString().split('T')[0];
     expDateInput.value = today;
@@ -362,6 +406,8 @@ addExpenseForm.addEventListener('submit', async (e) => {
     
     const payload = {
         pin: userPin,
+        action: editingRowIndex ? 'edit' : 'add',
+        row: editingRowIndex,
         date: date,
         amount: parseFloat(amount),
         paidFrom: account,
@@ -369,7 +415,7 @@ addExpenseForm.addEventListener('submit', async (e) => {
         description: desc
     };
     
-    showLoading("Adding Expense...");
+    showLoading(editingRowIndex ? "Updating Expense..." : "Adding Expense...");
     addModal.classList.remove('show');
     document.body.style.overflow = '';
     
@@ -382,18 +428,42 @@ addExpenseForm.addEventListener('submit', async (e) => {
         const result = await response.json();
         
         if (result.status === "error") {
-            alert("Error adding expense: " + (result.error || "Unknown error"));
+            alert("Error saving expense: " + (result.error || "Unknown error"));
         } else {
-            // Append locally and update UI so we don't need a full refetch immediately
-            expenses.push({
-                'Date': date,
-                'Amount': amount,
-                'Paid From': account,
-                'Category': category,
-                'Description': desc
-            });
+            // Update locally and update UI so we don't need a full refetch immediately
+            if (editingRowIndex) {
+                const expIndex = expenses.findIndex(e => e.row == editingRowIndex);
+                if (expIndex !== -1) {
+                    expenses[expIndex] = {
+                        ...expenses[expIndex],
+                        'Date': date,
+                        'Amount': amount,
+                        'Paid From': account,
+                        'Category': category,
+                        'Description': desc
+                    };
+                }
+            } else {
+                let nextRow = 2;
+                if (expenses.length > 0) {
+                    nextRow = Math.max(...expenses.map(e => e.row || 0)) + 1;
+                }
+                expenses.push({
+                    'row': nextRow,
+                    'Date': date,
+                    'Amount': amount,
+                    'Paid From': account,
+                    'Category': category,
+                    'Description': desc
+                });
+            }
+            
             updateDashboard();
             addExpenseForm.reset();
+            
+            document.querySelector('#success-modal h2').innerText = editingRowIndex ? 'Update Successful' : 'Add Successful';
+            document.querySelector('#success-modal p').innerText = editingRowIndex ? 'Your expense has been updated.' : 'Your expense has been added.';
+            
             successModal.classList.add('show');
             document.body.style.overflow = 'hidden';
         }
