@@ -7,10 +7,16 @@ let userPin = "";
 let editingRowIndex = null;
 let chartInstance = null;
 let trendChartInstance = null;
+let breakdownChartInstance = null;
 
 // DOM Elements
 const loginView = document.getElementById('login-view');
 const dashboardView = document.getElementById('dashboard-view');
+const breakdownModal = document.getElementById('breakdown-modal');
+const closeBreakdownBtn = document.getElementById('close-breakdown-btn');
+const breakdownMonthTitle = document.getElementById('breakdown-month-title');
+const breakdownChartCanvas = document.getElementById('breakdown-chart');
+const breakdownList = document.getElementById('breakdown-list');
 const pinInput = document.getElementById('pin-input');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
@@ -340,6 +346,13 @@ const updateTrendChart = () => {
                     position: 'top',
                     labels: { color: '#94a3b8', font: { family: 'Inter' } }
                 }
+            },
+            onClick: (e, elements) => {
+                if (elements.length > 0) {
+                    const idx = elements[0].index;
+                    const targetMonth = monthlyData[idx];
+                    showMonthBreakdown(targetMonth.month, targetMonth.year, labels[idx]);
+                }
             }
         },
         plugins: [{
@@ -368,6 +381,90 @@ const updateTrendChart = () => {
     });
 };
 
+const showMonthBreakdown = (month, year, label) => {
+    breakdownMonthTitle.innerText = `${label} - Paid From`;
+    
+    const accountTotals = {};
+    let totalForMonth = 0;
+    
+    expenses.forEach(exp => {
+        const expDate = new Date(exp.Date);
+        if (isNaN(expDate.getTime())) return;
+        
+        if (expDate.getMonth() === month && expDate.getFullYear() === year) {
+            const amount = parseFloat(exp.Amount) || 0;
+            const account = exp['Paid From'] || 'Unknown';
+            accountTotals[account] = (accountTotals[account] || 0) + amount;
+            totalForMonth += amount;
+        }
+    });
+    
+    const sortedAccounts = Object.entries(accountTotals).sort((a, b) => b[1] - a[1]);
+    
+    const colors = [
+        '#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6',
+        '#8b5cf6', '#14b8a6', '#f43f5e', '#ef4444'
+    ];
+    
+    if (breakdownChartInstance) {
+        breakdownChartInstance.destroy();
+    }
+    
+    breakdownChartInstance = new Chart(breakdownChartCanvas, {
+        type: 'doughnut',
+        data: {
+            labels: sortedAccounts.map(a => a[0]),
+            datasets: [{
+                data: sortedAccounts.map(a => a[1]),
+                backgroundColor: colors.slice(0, sortedAccounts.length),
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: '#94a3b8', font: { family: 'Inter' } }
+                }
+            },
+            cutout: '70%'
+        }
+    });
+    
+    breakdownList.innerHTML = "";
+    if (sortedAccounts.length === 0) {
+        breakdownList.innerHTML = "<p class='text-muted' style='text-align: center;'>No expenses for this month.</p>";
+    } else {
+        sortedAccounts.forEach(([account, amount]) => {
+            const div = document.createElement('div');
+            div.style.display = 'flex';
+            div.style.justifyContent = 'space-between';
+            div.style.padding = '0.75rem 0';
+            div.style.borderBottom = '1px solid var(--card-border)';
+            
+            const percent = ((amount / totalForMonth) * 100).toFixed(1);
+            
+            div.innerHTML = `
+                <div>
+                    <h4 style="margin: 0; font-size: 0.95rem;">${account}</h4>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">${percent}%</span>
+                </div>
+                <div style="font-weight: 600;">${formatCurrency(amount)}</div>
+            `;
+            breakdownList.appendChild(div);
+        });
+        if (breakdownList.lastChild) {
+            breakdownList.lastChild.style.borderBottom = 'none';
+        }
+    }
+    
+    breakdownModal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+};
+
 // Modal Logic
 fabAdd.addEventListener('click', () => {
     editingRowIndex = null;
@@ -391,6 +488,11 @@ closeModalBtn.addEventListener('click', () => {
 
 closeSuccessBtn.addEventListener('click', () => {
     successModal.classList.remove('show');
+    document.body.style.overflow = '';
+});
+
+closeBreakdownBtn.addEventListener('click', () => {
+    breakdownModal.classList.remove('show');
     document.body.style.overflow = '';
 });
 
