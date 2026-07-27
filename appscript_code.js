@@ -1,13 +1,18 @@
-const PIN = "0488";
-const SHEET_NAME = "expense_details";
+const PROFILES = {
+  "Gopi": { pin: "0488", sheet: "gopi" },
+  "Rohith": { pin: "1234", sheet: "Rohith" }
+};
 
-function setupSheet() {
+function setupSheet(profileName) {
+  const profile = PROFILES[profileName];
+  if (!profile) throw new Error("Invalid profile");
+  
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
+  let sheet = ss.getSheetByName(profile.sheet);
   
   // If the sheet doesn't exist, create it
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
+    sheet = ss.insertSheet(profile.sheet);
   }
   
   // Check if headers exist
@@ -23,15 +28,17 @@ function setupSheet() {
 }
 
 function doGet(e) {
-  // Check PIN
+  // Check PIN and Profile
+  const profileName = e.parameter.profile;
   const pin = e.parameter.pin;
-  if (pin !== PIN) {
-    return ContentService.createTextOutput(JSON.stringify({ error: "Invalid PIN", status: "error" }))
+  
+  if (!PROFILES[profileName] || PROFILES[profileName].pin !== pin) {
+    return ContentService.createTextOutput(JSON.stringify({ error: "Invalid Profile or PIN", status: "error" }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
   try {
-    const sheet = setupSheet();
+    const sheet = setupSheet(profileName);
     const dataRange = sheet.getDataRange();
     const values = dataRange.getValues();
     
@@ -68,12 +75,12 @@ function doPost(e) {
       requestData = e.parameter;
     }
     
-    if (requestData.pin !== PIN) {
-      return ContentService.createTextOutput(JSON.stringify({ error: "Invalid PIN", status: "error" }))
+    if (!PROFILES[requestData.profile] || PROFILES[requestData.profile].pin !== requestData.pin) {
+      return ContentService.createTextOutput(JSON.stringify({ error: "Invalid Profile or PIN", status: "error" }))
         .setMimeType(ContentService.MimeType.JSON);
     }
     
-    const sheet = setupSheet();
+    const sheet = setupSheet(requestData.profile);
     const { action, row, date, amount, paidFrom, category, description } = requestData;
     
     if (action === 'edit' && row) {

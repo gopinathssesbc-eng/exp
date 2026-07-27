@@ -4,12 +4,14 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTMJB4KovW1nLcB0S5d
 // State
 let expenses = [];
 let userPin = "";
+let currentProfile = "";
 let editingRowIndex = null;
 let chartInstance = null;
 let trendChartInstance = null;
 let breakdownChartInstance = null;
 
 // DOM Elements
+const profileView = document.getElementById('profile-view');
 const loginView = document.getElementById('login-view');
 const dashboardView = document.getElementById('dashboard-view');
 const breakdownModal = document.getElementById('breakdown-modal');
@@ -20,13 +22,21 @@ const breakdownList = document.getElementById('breakdown-list');
 const pinInput = document.getElementById('pin-input');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
+const loginProfileName = document.getElementById('login-profile-name');
+const backToProfilesBtn = document.getElementById('back-to-profiles-btn');
 const logoutBtn = document.getElementById('logout-btn');
+const backProfileBtn = document.getElementById('back-profile-btn');
 
 const monthlyTotalEl = document.getElementById('monthly-total');
 const yearlyTotalEl = document.getElementById('yearly-total');
 const recentExpensesList = document.getElementById('recent-expenses-list');
 const categoryChartCanvas = document.getElementById('category-chart');
 const trendChartCanvas = document.getElementById('trend-chart');
+
+const viewAllBtn = document.getElementById('view-all-btn');
+const allExpensesModal = document.getElementById('all-expenses-modal');
+const closeAllExpensesBtn = document.getElementById('close-all-expenses-btn');
+const allExpensesList = document.getElementById('all-expenses-list');
 
 const fabAdd = document.getElementById('fab-add');
 const addModal = document.getElementById('add-modal');
@@ -55,6 +65,27 @@ const hideLoading = () => {
     loadingOverlay.classList.add('hidden');
 };
 
+// Profile Selection Logic
+document.querySelectorAll('.profile-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const profile = e.currentTarget.getAttribute('data-profile');
+        currentProfile = profile;
+        loginProfileName.innerText = profile;
+        
+        profileView.classList.remove('active-view');
+        loginView.classList.add('active-view');
+        pinInput.focus();
+    });
+});
+
+backToProfilesBtn.addEventListener('click', () => {
+    currentProfile = "";
+    pinInput.value = "";
+    loginError.innerText = "";
+    loginView.classList.remove('active-view');
+    profileView.classList.add('active-view');
+});
+
 // Login Logic
 loginBtn.addEventListener('click', async () => {
     const pin = pinInput.value;
@@ -68,7 +99,7 @@ loginBtn.addEventListener('click', async () => {
     
     try {
         // Send a GET request to check PIN and fetch initial data
-        const response = await fetch(`${SCRIPT_URL}?pin=${pin}`);
+        const response = await fetch(`${SCRIPT_URL}?profile=${currentProfile}&pin=${pin}`);
         const result = await response.json();
         
         if (result.status === "error") {
@@ -94,13 +125,14 @@ loginBtn.addEventListener('click', async () => {
     }
 });
 
-// Logout Logic
-logoutBtn.addEventListener('click', () => {
+// Logout / Switch Profile Logic
+const handleLogout = () => {
     userPin = "";
+    currentProfile = "";
     expenses = [];
     pinInput.value = "";
     dashboardView.classList.remove('active-view');
-    loginView.classList.add('active-view');
+    profileView.classList.add('active-view');
     if (chartInstance) {
         chartInstance.destroy();
         chartInstance = null;
@@ -109,7 +141,14 @@ logoutBtn.addEventListener('click', () => {
         trendChartInstance.destroy();
         trendChartInstance = null;
     }
-});
+    if (breakdownChartInstance) {
+        breakdownChartInstance.destroy();
+        breakdownChartInstance = null;
+    }
+};
+
+logoutBtn.addEventListener('click', handleLogout);
+backProfileBtn.addEventListener('click', handleLogout);
 
 // Update Dashboard
 const updateDashboard = () => {
@@ -150,17 +189,14 @@ const updateDashboard = () => {
     updateRecentList();
 };
 
-const updateRecentList = () => {
-    recentExpensesList.innerHTML = "";
-    // Get last 5 expenses
-    const recent = [...expenses].reverse().slice(0, 5);
-    
-    if (recent.length === 0) {
-        recentExpensesList.innerHTML = "<p class='text-muted'>No recent expenses.</p>";
+const renderExpenses = (expenseArray, container) => {
+    container.innerHTML = "";
+    if (expenseArray.length === 0) {
+        container.innerHTML = "<p class='text-muted' style='text-align: center; padding: 1rem;'>No expenses found.</p>";
         return;
     }
     
-    recent.forEach(exp => {
+    expenseArray.forEach(exp => {
         const div = document.createElement('div');
         div.className = 'recent-item';
         
@@ -183,69 +219,81 @@ const updateRecentList = () => {
                 </button>
             </div>
         `;
-        recentExpensesList.appendChild(div);
-    });
-
-    // Add event listeners to edit buttons
-    document.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const row = e.currentTarget.getAttribute('data-row');
-            const exp = expenses.find(e => e.row == row);
-            if (exp) {
-                editingRowIndex = row;
-                document.querySelector('#add-modal h2').innerText = 'Edit Expense';
-                document.getElementById('update-btn').innerText = 'Update';
-                
-                // Format date to YYYY-MM-DD
-                let formattedDate = "";
-                if (exp.Date) {
-                    const d = new Date(exp.Date);
-                    const yyyy = d.getFullYear();
-                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                    const dd = String(d.getDate()).padStart(2, '0');
-                    formattedDate = `${yyyy}-${mm}-${dd}`;
-                }
-                
-                document.getElementById('exp-date').value = formattedDate;
-                document.getElementById('exp-amount').value = exp.Amount;
-                document.getElementById('exp-account').value = exp['Paid From'];
-                document.getElementById('exp-category').value = exp.Category;
-                document.getElementById('exp-desc').value = exp.Description;
-                
-                addModal.classList.add('show');
-                document.body.style.overflow = 'hidden';
-            }
-        });
-    });
-
-    // Add event listeners to delete buttons
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            const row = e.currentTarget.getAttribute('data-row');
-            if (confirm("Are you sure you want to delete this expense?")) {
-                showLoading("Deleting Expense...");
-                try {
-                    const response = await fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ pin: userPin, action: 'delete', row: parseInt(row) })
-                    });
-                    const result = await response.json();
-                    if (result.status === "error") {
-                        alert("Error deleting expense: " + (result.error || "Unknown error"));
-                    } else {
-                        expenses = expenses.filter(exp => exp.row != row);
-                        updateDashboard();
-                    }
-                } catch (error) {
-                    console.error("Error deleting expense:", error);
-                    alert("Failed to delete expense. Network error.");
-                } finally {
-                    hideLoading();
-                }
-            }
-        });
+        container.appendChild(div);
     });
 };
+
+const updateRecentList = () => {
+    const recent = [...expenses].reverse().slice(0, 5);
+    renderExpenses(recent, recentExpensesList);
+};
+
+// Event Delegation for Edit & Delete buttons
+document.getElementById('app-container').addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('.edit-btn');
+    const deleteBtn = e.target.closest('.delete-btn');
+    
+    if (editBtn) {
+        const row = editBtn.getAttribute('data-row');
+        const exp = expenses.find(e => e.row == row);
+        if (exp) {
+            editingRowIndex = row;
+            document.querySelector('#add-modal h2').innerText = 'Edit Expense';
+            document.getElementById('update-btn').innerText = 'Update';
+            
+            // Format date to YYYY-MM-DD
+            let formattedDate = "";
+            if (exp.Date) {
+                const d = new Date(exp.Date);
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                formattedDate = `${yyyy}-${mm}-${dd}`;
+            }
+            
+            document.getElementById('exp-date').value = formattedDate;
+            document.getElementById('exp-amount').value = exp.Amount;
+            document.getElementById('exp-account').value = exp['Paid From'];
+            document.getElementById('exp-category').value = exp.Category;
+            document.getElementById('exp-desc').value = exp.Description;
+            
+            allExpensesModal.classList.remove('show');
+            addModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+    
+    if (deleteBtn) {
+        const row = deleteBtn.getAttribute('data-row');
+        if (confirm("Are you sure you want to delete this expense?")) {
+            showLoading("Deleting Expense...");
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'delete', row: parseInt(row) })
+                });
+                const result = await response.json();
+                if (result.status === "error") {
+                    alert("Error deleting expense: " + (result.error || "Unknown error"));
+                } else {
+                    expenses = expenses.filter(exp => exp.row != row);
+                    updateDashboard();
+                    
+                    // If all expenses modal is open, update it too
+                    if (allExpensesModal.classList.contains('show')) {
+                        renderExpenses([...expenses].reverse(), allExpensesList);
+                    }
+                }
+            } catch (error) {
+                console.error("Error deleting expense:", error);
+                alert("Failed to delete expense. Network error.");
+            } finally {
+                hideLoading();
+            }
+        }
+    }
+});
+
 
 const updateChart = (categoryTotals) => {
     const labels = Object.keys(categoryTotals);
@@ -527,6 +575,17 @@ closeBreakdownBtn.addEventListener('click', () => {
     document.body.style.overflow = '';
 });
 
+viewAllBtn.addEventListener('click', () => {
+    renderExpenses([...expenses].reverse(), allExpensesList);
+    allExpensesModal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+});
+
+closeAllExpensesBtn.addEventListener('click', () => {
+    allExpensesModal.classList.remove('show');
+    document.body.style.overflow = '';
+});
+
 // Form Submission
 addExpenseForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -539,6 +598,7 @@ addExpenseForm.addEventListener('submit', async (e) => {
     
     const payload = {
         pin: userPin,
+        profile: currentProfile,
         action: editingRowIndex ? 'edit' : 'add',
         row: editingRowIndex,
         date: date,
@@ -592,6 +652,12 @@ addExpenseForm.addEventListener('submit', async (e) => {
             }
             
             updateDashboard();
+            
+            // If the all expenses modal is open, re-render it
+            if (allExpensesModal.classList.contains('show')) {
+                renderExpenses([...expenses].reverse(), allExpensesList);
+            }
+            
             addExpenseForm.reset();
             
             document.querySelector('#success-modal h2').innerText = editingRowIndex ? 'Update Successful' : 'Add Successful';
