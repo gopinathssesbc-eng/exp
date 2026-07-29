@@ -346,45 +346,96 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
 
 
 const updateChart = (categoryTotals) => {
-    const labels = Object.keys(categoryTotals);
-    const data = Object.values(categoryTotals);
+    // Convert to array and sort descending by amount
+    const sortedCategories = Object.entries(categoryTotals)
+        .sort((a, b) => b[1] - a[1]);
+        
+    const labels = sortedCategories.map(item => item[0]);
+    const data = sortedCategories.map(item => item[1]);
     
     // Nice color palette for dark mode
     const colors = [
         '#6366f1', '#ef4444', '#10b981', '#f59e0b', '#3b82f6',
-        '#ec4899', '#8b5cf6', '#14b8a6', '#f43f5e'
+        '#ec4899', '#8b5cf6', '#14b8a6', '#f43f5e', '#a855f7',
+        '#f97316', '#06b6d4', '#84cc16'
     ];
     
     if (chartInstance) {
         chartInstance.destroy();
     }
     
+    // Dynamically adjust height if there are many labels
+    const chartContainer = categoryChartCanvas.parentElement;
+    if (labels.length > 5) {
+        chartContainer.style.height = `${Math.max(250, labels.length * 40)}px`;
+    } else {
+        chartContainer.style.height = '250px';
+    }
+    
     chartInstance = new Chart(categoryChartCanvas, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: labels,
             datasets: [{
                 data: data,
-                backgroundColor: colors,
+                backgroundColor: colors.slice(0, labels.length).map((c, i) => colors[i % colors.length]),
                 borderWidth: 0,
-                hoverOffset: 4
+                borderRadius: 4
             }]
         },
         options: {
+            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { right: 80 }
+            },
             plugins: {
                 legend: {
-                    position: 'bottom',
-                    labels: {
-                        color: '#94a3b8',
-                        padding: 20,
-                        font: { family: 'Inter' }
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(context.parsed.x);
+                        }
                     }
                 }
             },
-            cutout: '70%'
-        }
+            scales: {
+                x: {
+                    display: false,
+                    beginAtZero: true,
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: { color: '#94a3b8', font: { family: 'Inter' } }
+                }
+            }
+        },
+        plugins: [{
+            id: 'barLabels',
+            afterDatasetsDraw: (chart) => {
+                const { ctx } = chart;
+                ctx.save();
+                ctx.font = '500 12px Inter, sans-serif';
+                ctx.fillStyle = '#f8fafc';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                
+                chart.data.datasets.forEach((dataset, i) => {
+                    const meta = chart.getDatasetMeta(i);
+                    meta.data.forEach((bar, index) => {
+                        const value = dataset.data[index];
+                        if (value > 0) {
+                            const formatted = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
+                            ctx.fillText(formatted, bar.x + 8, bar.y);
+                        }
+                    });
+                });
+                ctx.restore();
+            }
+        }]
     });
 };
 
