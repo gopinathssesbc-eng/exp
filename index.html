@@ -12,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=13">
+    <link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
     <!-- App Container -->
@@ -24,14 +24,18 @@
                 <p>Select your profile</p>
                 <div class="profiles-container">
                     <button class="profile-btn" data-profile="Gopi">
-                        <img src="gopi.png?v=13" class="profile-avatar-img" alt="Gopi Avatar">
+                        <img src="gopi.png?v=14" class="profile-avatar-img" alt="Gopi Avatar">
                         <span>Gopi</span>
                     </button>
                     <button class="profile-btn" data-profile="Rohith">
-                        <img src="rohith.png?v=13" class="profile-avatar-img" alt="Rohith Avatar">
+                        <img src="rohith.png?v=14" class="profile-avatar-img" alt="Rohith Avatar">
                         <span>Rohith</span>
                     </button>
                 </div>
+            </div>
+            
+            <div style="position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 0.75rem; font-weight: 500; letter-spacing: 0.5px;">
+                v1.1.0 &bull; Updated: 29 Jul 2026, 13:04
             </div>
         </section>
 
@@ -86,7 +90,12 @@
             </div>
 
             <div class="glass-card chart-card">
-                <h3>This Month's Breakdown</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 style="margin: 0;">Month Breakdown</h3>
+                    <select id="breakdown-month-selector" style="background: rgba(255,255,255,0.05); color: var(--text-main); border: 1px solid var(--card-border); padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.85rem; outline: none; cursor: pointer;">
+                        <!-- Options injected by JS -->
+                    </select>
+                </div>
                 <div class="chart-container">
                     <canvas id="category-chart"></canvas>
                 </div>
@@ -268,6 +277,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=14"></script>
 </body>
 </html>

@@ -52,6 +52,7 @@ const monthlyTotalEl = document.getElementById('monthly-total');
 const yearlyTotalEl = document.getElementById('yearly-total');
 const recentExpensesList = document.getElementById('recent-expenses-list');
 const categoryChartCanvas = document.getElementById('category-chart');
+const breakdownMonthSelector = document.getElementById('breakdown-month-selector');
 const trendChartCanvas = document.getElementById('trend-chart');
 
 const viewAllBtn = document.getElementById('view-all-btn');
@@ -208,8 +209,6 @@ const updateDashboard = () => {
     
     let monthlyTotal = 0;
     let yearlyTotal = 0;
-    const categoryTotals = {};
-    const recent = [];
 
     expenses.forEach(exp => {
         // Parse date
@@ -223,10 +222,6 @@ const updateDashboard = () => {
             
             if (expDate.getMonth() === currentMonth) {
                 monthlyTotal += amount;
-                
-                // For pie chart
-                const cat = exp.Category || "Other";
-                categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
             }
         }
     });
@@ -234,10 +229,72 @@ const updateDashboard = () => {
     monthlyTotalEl.innerText = formatCurrency(monthlyTotal);
     yearlyTotalEl.innerText = formatCurrency(yearlyTotal);
     
-    updateChart(categoryTotals);
+    populateBreakdownMonths();
+    updateBreakdownChart();
     updateTrendChart();
     updateRecentList();
 };
+
+const populateBreakdownMonths = () => {
+    const currentSelection = breakdownMonthSelector.value;
+    const monthsSet = new Set();
+    
+    // Always add current month
+    const now = new Date();
+    monthsSet.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    
+    expenses.forEach(exp => {
+        const d = new Date(exp.Date);
+        if (!isNaN(d.getTime())) {
+            monthsSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+        }
+    });
+    
+    const sortedMonths = Array.from(monthsSet).sort().reverse();
+    
+    breakdownMonthSelector.innerHTML = "";
+    sortedMonths.forEach(ym => {
+        const [year, month] = ym.split('-');
+        const dateObj = new Date(parseInt(year), parseInt(month) - 1, 1);
+        const monthName = dateObj.toLocaleString('en-IN', { month: 'short' });
+        
+        const option = document.createElement('option');
+        option.value = ym;
+        option.innerText = `${year}-${monthName.toUpperCase()}`; // e.g. 2026-JUL
+        breakdownMonthSelector.appendChild(option);
+    });
+    
+    if (currentSelection && sortedMonths.includes(currentSelection)) {
+        breakdownMonthSelector.value = currentSelection;
+    } else {
+        const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        breakdownMonthSelector.value = sortedMonths.includes(currentYM) ? currentYM : sortedMonths[0];
+    }
+};
+
+const updateBreakdownChart = () => {
+    const selectedYM = breakdownMonthSelector.value;
+    if (!selectedYM) return;
+    
+    const [selYear, selMonth] = selectedYM.split('-').map(Number);
+    const categoryTotals = {};
+    
+    expenses.forEach(exp => {
+        const expDate = new Date(exp.Date);
+        const amount = parseFloat(exp.Amount) || 0;
+        
+        if (isNaN(expDate.getTime())) return;
+        
+        if (expDate.getFullYear() === selYear && (expDate.getMonth() + 1) === selMonth) {
+            const cat = exp.Category || "Other";
+            categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+        }
+    });
+    
+    updateChart(categoryTotals);
+};
+
+breakdownMonthSelector.addEventListener('change', updateBreakdownChart);
 
 const renderExpenses = (expenseArray, container) => {
     container.innerHTML = "";
