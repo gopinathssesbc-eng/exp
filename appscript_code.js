@@ -1,7 +1,45 @@
 const PROFILES = {
-  "Gopi": { pin: "0488", sheet: "gopi" },
-  "Rohith": { pin: "1234", sheet: "Rohith" }
+  "Gopi": { sheet: "gopi", adminSheet: "Gopi_admin" },
+  "Rohith": { sheet: "Rohith", adminSheet: "Rohith_admin" }
 };
+
+function getAdminData(adminSheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(adminSheetName);
+  
+  if (!sheet) {
+    sheet = ss.insertSheet(adminSheetName);
+    sheet.getRange(1, 1, 1, 2).setValues([["password", "0000"]]);
+    sheet.getRange(2, 1, 1, 2).setValues([["payment category", "EXPENSE CATEGORY"]]);
+  }
+  
+  const dataRange = sheet.getDataRange();
+  const values = dataRange.getValues();
+  
+  const pin = values.length > 0 && values[0].length > 1 ? String(values[0][1]).trim() : "0000";
+  
+  const paidFrom = [];
+  const categories = [];
+  
+  for (let i = 2; i < values.length; i++) {
+    if (values[i][0]) paidFrom.push(String(values[i][0]).trim());
+    if (values[i][1]) categories.push(String(values[i][1]).trim());
+  }
+  
+  return { pin, paidFrom, categories };
+}
+
+function checkAuth(profileName, pinInput) {
+  const profile = PROFILES[profileName];
+  if (!profile) return { valid: false, error: "Invalid Profile" };
+  
+  const adminData = getAdminData(profile.adminSheet);
+  if (adminData.pin !== String(pinInput).trim()) {
+    return { valid: false, error: "Invalid PIN" };
+  }
+  
+  return { valid: true, adminData, profile };
+}
 
 function setupSheet(profileName) {
   const profile = PROFILES[profileName];
@@ -10,17 +48,13 @@ function setupSheet(profileName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(profile.sheet);
   
-  // If the sheet doesn't exist, create it
   if (!sheet) {
     sheet = ss.insertSheet(profile.sheet);
   }
   
-  // Check if headers exist
   const headers = sheet.getRange(1, 1, 1, 5).getValues()[0];
   if (headers[0] === "" || headers[0] !== "Date") {
-    // Write headers
     sheet.getRange(1, 1, 1, 5).setValues([['Date', 'Amount', 'Paid From', 'Category', 'Description']]);
-    // Optional: make headers bold
     sheet.getRange(1, 1, 1, 5).setFontWeight("bold");
   }
   
@@ -28,12 +62,12 @@ function setupSheet(profileName) {
 }
 
 function doGet(e) {
-  // Check PIN and Profile
   const profileName = e.parameter.profile;
   const pin = e.parameter.pin;
   
-  if (!PROFILES[profileName] || PROFILES[profileName].pin !== pin) {
-    return ContentService.createTextOutput(JSON.stringify({ error: "Invalid Profile or PIN", status: "error" }))
+  const auth = checkAuth(profileName, pin);
+  if (!auth.valid) {
+    return ContentService.createTextOutput(JSON.stringify({ error: auth.error, status: "error" }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -42,7 +76,6 @@ function doGet(e) {
     const dataRange = sheet.getDataRange();
     const values = dataRange.getValues();
     
-    // Convert to array of objects
     const data = [];
     if (values.length > 1) {
       const headers = values[0];
@@ -56,8 +89,14 @@ function doGet(e) {
       }
     }
     
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: data }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ 
+      status: "success", 
+      data: data, 
+      settings: { 
+        paidFrom: auth.adminData.paidFrom, 
+        categories: auth.adminData.categories 
+      }
+    })).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", error: error.message }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -67,21 +106,57 @@ function doGet(e) {
 function doPost(e) {
   try {
     let requestData;
-    // In Apps Script, post data usually comes in postData.contents
     if (e.postData && e.postData.contents) {
       requestData = JSON.parse(e.postData.contents);
     } else {
-      // fallback for x-www-form-urlencoded
       requestData = e.parameter;
     }
     
-    if (!PROFILES[requestData.profile] || PROFILES[requestData.profile].pin !== requestData.pin) {
-      return ContentService.createTextOutput(JSON.stringify({ error: "Invalid Profile or PIN", status: "error" }))
+    const auth = checkAuth(requestData.profile, requestData.pin);
+    if (!auth.valid) {
+      return ContentService.createTextOutput(JSON.stringify({ error: auth.error, status: "error" }))
         .setMimeType(ContentService.MimeType.JSON);
     }
     
+    const { action } = requestData;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    if (action === 'change_password') {
+      const { new_pin } = requestData;
+      const adminSheet = ss.getSheetByName(auth.profile.adminSheet);
+      adminSheet.getRange(1, 2).setValue(new_pin);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Password updated successfully" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    if (action === 'add_setting' || action === 'delete_setting') {
+      const { setting_type, value } = requestData;
+      const adminSheet = ss.getSheetByName(auth.profile.adminSheet);
+      const col = setting_type === 'paid_from' ? 1 : 2;
+      
+      const numRows = Math.max(adminSheet.getLastRow(), 3);
+      const range = adminSheet.getRange(3, col, numRows - 2, 1);
+      const values = range.getValues();
+      let arr = values.map(r => r[0]).filter(v => v !== "");
+      
+      if (action === 'add_setting') {
+        if (!arr.includes(value)) arr.push(value);
+      } else {
+        arr = arr.filter(v => String(v).trim() !== String(value).trim());
+      }
+      
+      range.clearContent();
+      if (arr.length > 0) {
+        adminSheet.getRange(3, col, arr.length, 1).setValues(arr.map(v => [v]));
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Setting updated" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Existing expense logic
     const sheet = setupSheet(requestData.profile);
-    const { action, row, date, amount, paidFrom, category, description } = requestData;
+    const { row, date, amount, paidFrom, category, description } = requestData;
     
     if (action === 'edit' && row) {
       sheet.getRange(row, 1, 1, 5).setValues([[date, amount, paidFrom, category, description]]);
@@ -92,9 +167,7 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense deleted successfully" }))
         .setMimeType(ContentService.MimeType.JSON);
     } else {
-      // Append the row
       sheet.appendRow([date, amount, paidFrom, category, description]);
-      
       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense added successfully" }))
         .setMimeType(ContentService.MimeType.JSON);
     }

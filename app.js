@@ -9,6 +9,8 @@ let editingRowIndex = null;
 let chartInstance = null;
 let trendChartInstance = null;
 let breakdownChartInstance = null;
+let appSettings = { paidFrom: [], categories: [] };
+let currentManagingOption = "";
 
 // DOM Elements
 const profileView = document.getElementById('profile-view');
@@ -26,6 +28,25 @@ const loginProfileName = document.getElementById('login-profile-name');
 const backToProfilesBtn = document.getElementById('back-to-profiles-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const backProfileBtn = document.getElementById('back-profile-btn');
+
+const settingsBtn = document.getElementById('settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettingsBtn = document.getElementById('close-settings-btn');
+const optChangePassword = document.getElementById('opt-change-password');
+const optEditPaidFrom = document.getElementById('opt-edit-paid-from');
+const optEditCategory = document.getElementById('opt-edit-category');
+
+const changePasswordModal = document.getElementById('change-password-modal');
+const closeChangePwdBtn = document.getElementById('close-change-pwd-btn');
+const changePwdForm = document.getElementById('change-pwd-form');
+const pwdError = document.getElementById('pwd-error');
+
+const manageOptionsModal = document.getElementById('manage-options-modal');
+const closeManageOptionsBtn = document.getElementById('close-manage-options-btn');
+const manageOptionsTitle = document.getElementById('manage-options-title');
+const manageOptionsList = document.getElementById('manage-options-list');
+const addOptionForm = document.getElementById('add-option-form');
+const newOptionInput = document.getElementById('new-option-input');
 
 const monthlyTotalEl = document.getElementById('monthly-total');
 const yearlyTotalEl = document.getElementById('yearly-total');
@@ -111,6 +132,9 @@ loginBtn.addEventListener('click', async () => {
         // Success
         userPin = pin;
         expenses = result.data || [];
+        appSettings = result.settings || { paidFrom: [], categories: [] };
+        
+        populateDropdowns();
         
         loginView.classList.remove('active-view');
         dashboardView.classList.add('active-view');
@@ -124,6 +148,32 @@ loginBtn.addEventListener('click', async () => {
         hideLoading();
     }
 });
+
+const populateDropdowns = () => {
+    const expAccount = document.getElementById('exp-account');
+    const expCategory = document.getElementById('exp-category');
+    
+    expAccount.innerHTML = '<option value="" disabled selected>Select account</option>';
+    expCategory.innerHTML = '<option value="" disabled selected>Select category</option>';
+    
+    if (appSettings.paidFrom) {
+        appSettings.paidFrom.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.innerText = opt;
+            expAccount.appendChild(option);
+        });
+    }
+    
+    if (appSettings.categories) {
+        appSettings.categories.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.innerText = opt;
+            expCategory.appendChild(option);
+        });
+    }
+};
 
 // Logout / Switch Profile Logic
 const handleLogout = () => {
@@ -671,5 +721,185 @@ addExpenseForm.addEventListener('submit', async (e) => {
         alert("Failed to submit expense. Network error.");
     } finally {
         hideLoading();
+    }
+});
+
+// Settings Modals Logic
+settingsBtn.addEventListener('click', () => {
+    settingsModal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+});
+
+closeSettingsBtn.addEventListener('click', () => {
+    settingsModal.classList.remove('show');
+    document.body.style.overflow = '';
+});
+
+// Change Password
+optChangePassword.addEventListener('click', () => {
+    settingsModal.classList.remove('show');
+    changePwdForm.reset();
+    pwdError.innerText = "";
+    changePasswordModal.classList.add('show');
+});
+
+closeChangePwdBtn.addEventListener('click', () => {
+    changePasswordModal.classList.remove('show');
+    document.body.style.overflow = '';
+});
+
+changePwdForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const oldPin = document.getElementById('old-pin').value;
+    const newPin = document.getElementById('new-pin').value;
+    const confirmPin = document.getElementById('confirm-pin').value;
+    
+    if (oldPin !== userPin) {
+        pwdError.innerText = "Old PIN is incorrect.";
+        return;
+    }
+    if (newPin !== confirmPin) {
+        pwdError.innerText = "New PINs do not match.";
+        return;
+    }
+    if (newPin.length !== 4) {
+        pwdError.innerText = "PIN must be 4 digits.";
+        return;
+    }
+    
+    pwdError.innerText = "";
+    showLoading("Updating Password...");
+    
+    try {
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'change_password', new_pin: newPin })
+        });
+        const result = await response.json();
+        
+        if (result.status === "error") {
+            pwdError.innerText = result.error || "Failed to update password.";
+        } else {
+            userPin = newPin; // Update locally
+            changePasswordModal.classList.remove('show');
+            document.body.style.overflow = '';
+            
+            document.querySelector('#success-modal h2').innerText = 'Password Updated';
+            document.querySelector('#success-modal p').innerText = 'Your PIN has been successfully changed.';
+            successModal.classList.add('show');
+        }
+    } catch (error) {
+        console.error("Change Pwd Error:", error);
+        pwdError.innerText = "Network error.";
+    } finally {
+        hideLoading();
+    }
+});
+
+// Manage Options
+const renderManageOptions = () => {
+    manageOptionsList.innerHTML = "";
+    const list = currentManagingOption === 'paid_from' ? appSettings.paidFrom : appSettings.categories;
+    
+    if (!list || list.length === 0) {
+        manageOptionsList.innerHTML = "<p class='text-muted' style='text-align: center;'>No options found.</p>";
+        return;
+    }
+    
+    list.forEach(opt => {
+        const div = document.createElement('div');
+        div.className = 'setting-item';
+        div.innerHTML = `
+            <span>${opt}</span>
+            <button class="icon-btn delete-opt-btn" data-val="${opt}" title="Delete">
+                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            </button>
+        `;
+        manageOptionsList.appendChild(div);
+    });
+};
+
+const openManageOptions = (type) => {
+    currentManagingOption = type;
+    settingsModal.classList.remove('show');
+    manageOptionsTitle.innerText = type === 'paid_from' ? "Edit 'Paid From'" : "Edit 'Expense Category'";
+    addOptionForm.reset();
+    renderManageOptions();
+    manageOptionsModal.classList.add('show');
+};
+
+optEditPaidFrom.addEventListener('click', () => openManageOptions('paid_from'));
+optEditCategory.addEventListener('click', () => openManageOptions('category'));
+
+closeManageOptionsBtn.addEventListener('click', () => {
+    manageOptionsModal.classList.remove('show');
+    document.body.style.overflow = '';
+});
+
+addOptionForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newVal = newOptionInput.value.trim();
+    if (!newVal) return;
+    
+    showLoading("Adding Option...");
+    try {
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'add_setting', setting_type: currentManagingOption, value: newVal })
+        });
+        const result = await response.json();
+        
+        if (result.status === "error") {
+            alert("Error adding option: " + (result.error || "Unknown error"));
+        } else {
+            if (currentManagingOption === 'paid_from') {
+                if (!appSettings.paidFrom.includes(newVal)) appSettings.paidFrom.push(newVal);
+            } else {
+                if (!appSettings.categories.includes(newVal)) appSettings.categories.push(newVal);
+            }
+            populateDropdowns();
+            renderManageOptions();
+            addOptionForm.reset();
+        }
+    } catch (error) {
+        console.error("Add Option Error:", error);
+        alert("Failed to add option. Network error.");
+    } finally {
+        hideLoading();
+    }
+});
+
+// Event Delegation for Delete Option Button
+manageOptionsList.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.delete-opt-btn');
+    if (deleteBtn) {
+        const val = deleteBtn.getAttribute('data-val');
+        if (confirm(`Are you sure you want to delete "${val}"?`)) {
+            showLoading("Deleting Option...");
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'delete_setting', setting_type: currentManagingOption, value: val })
+                });
+                const result = await response.json();
+                
+                if (result.status === "error") {
+                    alert("Error deleting option: " + (result.error || "Unknown error"));
+                } else {
+                    if (currentManagingOption === 'paid_from') {
+                        appSettings.paidFrom = appSettings.paidFrom.filter(v => v !== val);
+                    } else {
+                        appSettings.categories = appSettings.categories.filter(v => v !== val);
+                    }
+                    populateDropdowns();
+                    renderManageOptions();
+                }
+            } catch (error) {
+                console.error("Delete Option Error:", error);
+                alert("Failed to delete option. Network error.");
+            } finally {
+                hideLoading();
+            }
+        }
     }
 });
