@@ -4,7 +4,7 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTMJB4KovW1nLcB0S5d
 // State
 let expenses = [];
 let userPin = "";
-let currentProfile = "";
+let currentProfile = "Gopi";
 let editingRowIndex = null;
 let chartInstance = null;
 let trendChartInstance = null;
@@ -13,7 +13,6 @@ let appSettings = { paidFrom: [], categories: [] };
 let currentManagingOption = "";
 
 // DOM Elements
-const profileView = document.getElementById('profile-view');
 const loginView = document.getElementById('login-view');
 const dashboardView = document.getElementById('dashboard-view');
 const breakdownModal = document.getElementById('breakdown-modal');
@@ -24,10 +23,7 @@ const breakdownList = document.getElementById('breakdown-list');
 const pinInput = document.getElementById('pin-input');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
-const loginProfileName = document.getElementById('login-profile-name');
-const backToProfilesBtn = document.getElementById('back-to-profiles-btn');
 const logoutBtn = document.getElementById('logout-btn');
-const backProfileBtn = document.getElementById('back-profile-btn');
 
 const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
@@ -87,28 +83,15 @@ const hideLoading = () => {
     loadingOverlay.classList.add('hidden');
 };
 
-// Profile Selection Logic
-document.querySelectorAll('.profile-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        const profile = e.currentTarget.getAttribute('data-profile');
-        currentProfile = profile;
-        loginProfileName.innerText = profile;
-        
-        profileView.classList.remove('active-view');
-        loginView.classList.add('active-view');
-        pinInput.focus();
-    });
-});
 
-backToProfilesBtn.addEventListener('click', () => {
-    currentProfile = "";
-    pinInput.value = "";
-    loginError.innerText = "";
-    loginView.classList.remove('active-view');
-    profileView.classList.add('active-view');
-});
 
 // Login Logic
+pinInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        loginBtn.click();
+    }
+});
+
 loginBtn.addEventListener('click', async () => {
     const pin = pinInput.value;
     if (pin.length !== 4) {
@@ -176,14 +159,13 @@ const populateDropdowns = () => {
     }
 };
 
-// Logout / Switch Profile Logic
+// Logout Logic
 const handleLogout = () => {
     userPin = "";
-    currentProfile = "";
     expenses = [];
     pinInput.value = "";
     dashboardView.classList.remove('active-view');
-    profileView.classList.add('active-view');
+    loginView.classList.add('active-view');
     if (chartInstance) {
         chartInstance.destroy();
         chartInstance = null;
@@ -199,7 +181,6 @@ const handleLogout = () => {
 };
 
 logoutBtn.addEventListener('click', handleLogout);
-backProfileBtn.addEventListener('click', handleLogout);
 
 // Update Dashboard
 const updateDashboard = () => {
@@ -375,10 +356,8 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
         if (confirm("Are you sure you want to delete this expense?")) {
             showLoading("Deleting Expense...");
             try {
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'delete', row: parseInt(row) })
-                });
+                const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'delete', row: parseInt(row) });
+                const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
                 const result = await response.json();
                 if (result.status === "error") {
                     alert("Error deleting expense: " + (result.error || "Unknown error"));
@@ -766,69 +745,67 @@ addExpenseForm.addEventListener('submit', async (e) => {
         description: desc
     };
     
-    showLoading(editingRowIndex ? "Updating Expense..." : "Adding Expense...");
+    // Optimistic UI Update for faster perceived performance
+    const isEdit = !!editingRowIndex;
+    
+    if (isEdit) {
+        const expIndex = expenses.findIndex(e => e.row == editingRowIndex);
+        if (expIndex !== -1) {
+            expenses[expIndex] = {
+                ...expenses[expIndex],
+                'Date': date,
+                'Amount': amount,
+                'Paid From': account,
+                'Category': category,
+                'Description': desc
+            };
+        }
+    } else {
+        let nextRow = 2;
+        if (expenses.length > 0) {
+            nextRow = Math.max(...expenses.map(e => e.row || 0)) + 1;
+        }
+        expenses.push({
+            'row': nextRow,
+            'Date': date,
+            'Amount': amount,
+            'Paid From': account,
+            'Category': category,
+            'Description': desc
+        });
+    }
+    
+    updateDashboard();
+    
+    if (allExpensesModal.classList.contains('show')) {
+        renderExpenses([...expenses].reverse(), allExpensesList);
+    }
+    
+    addExpenseForm.reset();
     addModal.classList.remove('show');
     document.body.style.overflow = '';
     
+    document.querySelector('#success-modal h2').innerText = isEdit ? 'Update Successful' : 'Add Successful';
+    document.querySelector('#success-modal p').innerText = isEdit ? 'Your expense has been updated.' : 'Your expense has been added.';
+    successModal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+
+    // Background server update using GET to avoid CORS/redirect issues
     try {
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        });
-        
+        const params = new URLSearchParams();
+        for (const key in payload) {
+            params.append(key, payload[key]);
+        }
+        const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
         const result = await response.json();
         
         if (result.status === "error") {
-            alert("Error saving expense: " + (result.error || "Unknown error"));
-        } else {
-            // Update locally and update UI so we don't need a full refetch immediately
-            if (editingRowIndex) {
-                const expIndex = expenses.findIndex(e => e.row == editingRowIndex);
-                if (expIndex !== -1) {
-                    expenses[expIndex] = {
-                        ...expenses[expIndex],
-                        'Date': date,
-                        'Amount': amount,
-                        'Paid From': account,
-                        'Category': category,
-                        'Description': desc
-                    };
-                }
-            } else {
-                let nextRow = 2;
-                if (expenses.length > 0) {
-                    nextRow = Math.max(...expenses.map(e => e.row || 0)) + 1;
-                }
-                expenses.push({
-                    'row': nextRow,
-                    'Date': date,
-                    'Amount': amount,
-                    'Paid From': account,
-                    'Category': category,
-                    'Description': desc
-                });
-            }
-            
-            updateDashboard();
-            
-            // If the all expenses modal is open, re-render it
-            if (allExpensesModal.classList.contains('show')) {
-                renderExpenses([...expenses].reverse(), allExpensesList);
-            }
-            
-            addExpenseForm.reset();
-            
-            document.querySelector('#success-modal h2').innerText = editingRowIndex ? 'Update Successful' : 'Add Successful';
-            document.querySelector('#success-modal p').innerText = editingRowIndex ? 'Your expense has been updated.' : 'Your expense has been added.';
-            
-            successModal.classList.add('show');
-            document.body.style.overflow = 'hidden';
+            console.error("Error saving expense:", result.error);
+            alert("Failed to sync expense to server: " + result.error);
         }
     } catch (error) {
         console.error("Error submitting expense:", error);
         alert("Failed to submit expense. Network error.");
-    } finally {
-        hideLoading();
     }
 });
 
@@ -879,10 +856,8 @@ changePwdForm.addEventListener('submit', async (e) => {
     showLoading("Updating Password...");
     
     try {
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'change_password', new_pin: newPin })
-        });
+        const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'change_password', new_pin: newPin });
+        const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
         const result = await response.json();
         
         if (result.status === "error") {
@@ -951,10 +926,8 @@ addOptionForm.addEventListener('submit', async (e) => {
     
     showLoading("Adding Option...");
     try {
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'add_setting', setting_type: currentManagingOption, value: newVal })
-        });
+        const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'add_setting', setting_type: currentManagingOption, value: newVal });
+        const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
         const result = await response.json();
         
         if (result.status === "error") {
@@ -985,10 +958,8 @@ manageOptionsList.addEventListener('click', async (e) => {
         if (confirm(`Are you sure you want to delete "${val}"?`)) {
             showLoading("Deleting Option...");
             try {
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ pin: userPin, profile: currentProfile, action: 'delete_setting', setting_type: currentManagingOption, value: val })
-                });
+                const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'delete_setting', setting_type: currentManagingOption, value: val });
+                const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
                 const result = await response.json();
                 
                 if (result.status === "error") {
