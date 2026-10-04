@@ -19,7 +19,15 @@ function getAdminData(adminSheetName) {
   const dataRange = sheet.getDataRange();
   const values = dataRange.getValues();
 
-  const pin = values.length > 0 && values[0].length > 1 ? String(values[0][1]).trim() : "0000";
+  let pin = "0000";
+  if (values.length > 0 && values[0].length > 1) {
+    // If the cell contains a number like '0488', Google Sheets treats it as 488.
+    // We need to convert it to a string and pad it back to 4 digits.
+    pin = String(values[0][1]).trim();
+    if (pin.length < 4 && !isNaN(pin)) {
+      pin = pin.padStart(4, '0');
+    }
+  }
 
   const paidFrom = [];
   const categories = [];
