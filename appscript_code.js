@@ -7,6 +7,10 @@ const PROFILES = {
 };
 
 function getAdminData(adminSheetName) {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(adminSheetName);
+  if (cached) return JSON.parse(cached);
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(adminSheetName);
 
@@ -33,11 +37,13 @@ function getAdminData(adminSheetName) {
   const categories = [];
 
   for (let i = 2; i < values.length; i++) {
-    if (values[i][0]) paidFrom.push(String(values[i][0]).trim());
-    if (values[i][1]) categories.push(String(values[i][1]).trim());
+    if (values[i][0] && String(values[i][0]).trim() !== "") paidFrom.push(String(values[i][0]).trim());
+    if (values[i][1] && String(values[i][1]).trim() !== "") categories.push(String(values[i][1]).trim());
   }
 
-  return { pin, paidFrom, categories };
+  const result = { pin, paidFrom, categories };
+  cache.put(adminSheetName, JSON.stringify(result), 21600); // 6 hours
+  return result;
 }
 
 function checkAuth(profileName, pinInput) {
@@ -96,6 +102,8 @@ function doGet(e) {
       const headers = values[0];
       for (let i = 1; i < values.length; i++) {
         const row = values[i];
+        if (!row[0] || String(row[0]).trim() === "") continue; // Skip empty rows (e.g. from formatting artifacts)
+        
         const obj = { row: i + 1 };
         for (let j = 0; j < headers.length; j++) {
           obj[headers[j]] = row[j];
@@ -140,6 +148,7 @@ function doPost(e) {
       const { new_pin } = requestData;
       const adminSheet = ss.getSheetByName(auth.profile.adminSheet);
       adminSheet.getRange(1, 2).setValue(new_pin);
+      CacheService.getScriptCache().remove(auth.profile.adminSheet);
       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Password updated successfully" }))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -165,6 +174,7 @@ function doPost(e) {
         adminSheet.getRange(3, col, arr.length, 1).setValues(arr.map(v => [v]));
       }
 
+      CacheService.getScriptCache().remove(auth.profile.adminSheet);
       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Setting updated" }))
         .setMimeType(ContentService.MimeType.JSON);
     }
