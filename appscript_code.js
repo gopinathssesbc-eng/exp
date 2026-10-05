@@ -181,7 +181,8 @@ function doPost(e) {
 
     // Existing expense logic
     const sheet = setupSheet(requestData.profile);
-    const { row, date, amount, paidFrom, category, description } = requestData;
+    const { date, amount, paidFrom, category, description } = requestData;
+    const row = requestData.row ? parseInt(requestData.row, 10) : null;
 
     if (action === 'edit' && row) {
       if (row > sheet.getMaxRows() || row < 2) {
