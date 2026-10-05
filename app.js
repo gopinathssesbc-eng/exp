@@ -141,10 +141,6 @@ const fetchDataInBackground = async (pin) => {
         
         if (result.status === "error") {
             console.error("Background sync error:", result.error);
-            if (pin === "0488" || localStorage.getItem('appPin') === pin) {
-                // If they changed the password on the server, force logout next time or show a toast
-                // For now, just silently fail to avoid disrupting the offline experience
-            }
             return;
         }
         
@@ -156,13 +152,21 @@ const fetchDataInBackground = async (pin) => {
         expenses = result.data || [];
         appSettings = result.settings || { paidFrom: [], categories: [] };
         
-        populateDropdowns();
-        updateDashboard(); // Refresh UI with the latest data seamlessly
+        // Update UI only if the user is already on the dashboard
+        if (dashboardView.classList.contains('active-view')) {
+            populateDropdowns();
+            updateDashboard(); // Refresh UI with the latest data seamlessly
+        }
         
     } catch (error) {
         console.error("Background sync failed:", error);
     }
 };
+
+// Prefetch data immediately when the app loads to save time
+document.addEventListener('DOMContentLoaded', () => {
+    fetchDataInBackground("0488");
+});
 
 const populateDropdowns = () => {
     const expAccount = document.getElementById('exp-account');
