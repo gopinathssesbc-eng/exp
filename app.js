@@ -398,12 +398,22 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
                     alert("Error deleting expense: " + (result.error || "Unknown error"));
                 } else {
                     expenses = expenses.filter(exp => exp.row != row);
+                    // Fix row indices since Google Sheets shifts remaining rows up by 1
+                    expenses.forEach(exp => {
+                        if (exp.row > parseInt(row)) {
+                            exp.row -= 1;
+                        }
+                    });
+                    
                     updateDashboard();
                     
                     // If all expenses modal is open, update it too
                     if (allExpensesModal.classList.contains('show')) {
                         renderExpenses([...expenses].reverse(), allExpensesList);
                     }
+                    
+                    // Trigger a silent background sync to ensure perfection
+                    fetchDataInBackground(userPin);
                 }
             } catch (error) {
                 console.error("Error deleting expense:", error);
