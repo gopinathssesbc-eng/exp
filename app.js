@@ -111,43 +111,44 @@ loginBtn.addEventListener('click', async () => {
         const cachedExpenses = localStorage.getItem('appExpenses');
         const cachedSettings = localStorage.getItem('appSettings');
         if (cachedExpenses && cachedSettings) {
-            expenses = JSON.parse(cachedExpenses);
-            appSettings = JSON.parse(cachedSettings);
-            populateDropdowns();
-            hasLocalData = true;
+            try {
+                expenses = JSON.parse(cachedExpenses);
+                appSettings = JSON.parse(cachedSettings);
+                populateDropdowns();
+                hasLocalData = true;
+            } catch(e) {
+                console.error("Error parsing local data", e);
+            }
         }
         
         loginView.classList.remove('active-view');
         dashboardView.classList.add('active-view');
         
-        if (hasLocalData) {
-            updateDashboard();
-        } else {
-            showLoading("Loading data from server...");
-        }
+        // Always update dashboard immediately (shows empty if no data)
+        updateDashboard();
+        
+        // Fetch fresh data in the background silently
+        fetchDataInBackground(pin);
     } else {
-        loginError.innerText = "";
-        showLoading("Authenticating...");
+        loginError.innerText = "Invalid PIN";
     }
-    
+});
+
+const fetchDataInBackground = async (pin) => {
     try {
-        // Fetch fresh data in the background (or foreground if first login)
         const response = await fetch(`${SCRIPT_URL}?profile=${currentProfile}&pin=${pin}`);
         const result = await response.json();
         
         if (result.status === "error") {
-            if (pin === FRONTEND_PIN || savedPin === pin) {
-                handleLogout(); // Force logout if PIN changed on server
-                loginError.innerText = result.error || "Authentication failed. Please login again.";
-            } else {
-                loginError.innerText = result.error || "Authentication failed.";
+            console.error("Background sync error:", result.error);
+            if (pin === "0488" || localStorage.getItem('appPin') === pin) {
+                // If they changed the password on the server, force logout next time or show a toast
+                // For now, just silently fail to avoid disrupting the offline experience
             }
-            hideLoading();
             return;
         }
         
         // Success
-        userPin = pin;
         localStorage.setItem('appPin', pin);
         localStorage.setItem('appExpenses', JSON.stringify(result.data || []));
         localStorage.setItem('appSettings', JSON.stringify(result.settings || { paidFrom: [], categories: [] }));
@@ -156,23 +157,12 @@ loginBtn.addEventListener('click', async () => {
         appSettings = result.settings || { paidFrom: [], categories: [] };
         
         populateDropdowns();
-        
-        if (savedPin !== pin) {
-            loginView.classList.remove('active-view');
-            dashboardView.classList.add('active-view');
-        }
-        
-        updateDashboard(); // Refresh UI with the latest data
-        hideLoading();
+        updateDashboard(); // Refresh UI with the latest data seamlessly
         
     } catch (error) {
-        console.error("Login Error:", error);
-        if (savedPin !== pin) {
-            loginError.innerText = "Network error. Check your connection.";
-        }
-        hideLoading();
+        console.error("Background sync failed:", error);
     }
-});
+};
 
 const populateDropdowns = () => {
     const expAccount = document.getElementById('exp-account');
