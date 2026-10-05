@@ -1,5 +1,5 @@
 // REPLACE THIS URL WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz9xvR8FGNLEyiaZg4fqrR6qaKwG-94prd3y_xDcX_5OSEdi7TxOukj-wwAszFVOe2P/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyHUr86vmYWZFi4gBDKkq15wZL1rG4UdLHDNY1gXqBgvjfZec9DSPJpu6FHyFsWLL-L/exec";
 
 // State
 let expenses = [];
@@ -108,7 +108,22 @@ loginBtn.addEventListener('click', async () => {
         userPin = pin;
         loginError.innerText = "";
         
-        showLoading("Loading data...");
+        // Load fallback data from local storage to display immediately underneath the spinner
+        const cachedExpenses = localStorage.getItem('appExpenses');
+        const cachedSettings = localStorage.getItem('appSettings');
+        if (cachedExpenses && cachedSettings) {
+            try {
+                expenses = JSON.parse(cachedExpenses);
+                appSettings = JSON.parse(cachedSettings);
+            } catch(e) {}
+        }
+        
+        loginView.classList.remove('active-view');
+        dashboardView.classList.add('active-view');
+        populateDropdowns();
+        updateDashboard();
+        
+        showLoading("Syncing data...");
         
         // Wait for the background fetch to complete for consistent data
         try {
@@ -121,24 +136,7 @@ loginBtn.addEventListener('click', async () => {
             console.error(e);
         }
         
-        // Fallback to cache if network failed
-        if (expenses.length === 0) {
-            const cachedExpenses = localStorage.getItem('appExpenses');
-            const cachedSettings = localStorage.getItem('appSettings');
-            if (cachedExpenses && cachedSettings) {
-                try {
-                    expenses = JSON.parse(cachedExpenses);
-                    appSettings = JSON.parse(cachedSettings);
-                } catch(e) {}
-            }
-        }
-        
         hideLoading();
-        loginView.classList.remove('active-view');
-        dashboardView.classList.add('active-view');
-        
-        populateDropdowns();
-        updateDashboard();
         
     } else {
         loginError.innerText = "Invalid PIN";
