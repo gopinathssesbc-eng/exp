@@ -184,13 +184,54 @@ function doPost(e) {
     const { row, date, amount, paidFrom, category, description } = requestData;
 
     if (action === 'edit' && row) {
+      if (row > sheet.getMaxRows() || row < 2) {
+         return ContentService.createTextOutput(JSON.stringify({ status: "error", error: "Row out of bounds for edit. Please refresh." }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
       sheet.getRange(row, 1, 1, 5).setValues([[date, amount, paidFrom, category, description]]);
       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense updated successfully" }))
         .setMimeType(ContentService.MimeType.JSON);
     } else if (action === 'delete' && row) {
-      sheet.deleteRow(row);
-      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense deleted successfully" }))
-        .setMimeType(ContentService.MimeType.JSON);
+      let targetRow = row;
+      const data = sheet.getDataRange().getValues();
+      
+      const isMatch = (rIdx) => {
+        if (rIdx <= 1 || rIdx > data.length) return false;
+        const r = data[rIdx - 1];
+        
+        let sheetDate = r[0];
+        if (sheetDate instanceof Date) {
+          try {
+            sheetDate = Utilities.formatDate(sheetDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+          } catch(e) {}
+        }
+        
+        const dateMatch = !date || String(sheetDate).trim() === String(date).trim();
+        const amtMatch = !amount || String(r[1]).trim() === String(amount).trim();
+        const catMatch = !category || String(r[3]).trim() === String(category).trim();
+        
+        return dateMatch && amtMatch && catMatch;
+      };
+
+      if (!isMatch(targetRow)) {
+        targetRow = -1;
+        // Search bottom-up to find the most recent match
+        for (let i = data.length; i >= 2; i--) {
+          if (isMatch(i)) {
+            targetRow = i;
+            break;
+          }
+        }
+      }
+
+      if (targetRow !== -1) {
+        sheet.deleteRow(targetRow);
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense deleted successfully" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", error: "Could not locate expense to delete. Please refresh." }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     } else {
       sheet.appendRow([date, amount, paidFrom, category, description]);
       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense added successfully" }))

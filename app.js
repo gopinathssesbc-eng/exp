@@ -92,6 +92,8 @@ pinInput.addEventListener('keydown', (e) => {
     }
 });
 
+let prefetchPromise = null;
+
 loginBtn.addEventListener('click', async () => {
     const pin = pinInput.value;
     if (pin.length !== 4) {
@@ -101,34 +103,43 @@ loginBtn.addEventListener('click', async () => {
     
     const FRONTEND_PIN = "0488"; // Hardcoded for instant verification
     const savedPin = localStorage.getItem('appPin');
-    let hasLocalData = false;
     
     if (pin === FRONTEND_PIN || savedPin === pin) {
         userPin = pin;
         loginError.innerText = "";
         
-        // Load cached data if available for instant display
-        const cachedExpenses = localStorage.getItem('appExpenses');
-        const cachedSettings = localStorage.getItem('appSettings');
-        if (cachedExpenses && cachedSettings) {
-            try {
-                expenses = JSON.parse(cachedExpenses);
-                appSettings = JSON.parse(cachedSettings);
-                populateDropdowns();
-                hasLocalData = true;
-            } catch(e) {
-                console.error("Error parsing local data", e);
+        showLoading("Loading data...");
+        
+        // Wait for the background fetch to complete for consistent data
+        try {
+            if (prefetchPromise) {
+                await prefetchPromise;
+            } else {
+                await fetchDataInBackground(pin);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        
+        // Fallback to cache if network failed
+        if (expenses.length === 0) {
+            const cachedExpenses = localStorage.getItem('appExpenses');
+            const cachedSettings = localStorage.getItem('appSettings');
+            if (cachedExpenses && cachedSettings) {
+                try {
+                    expenses = JSON.parse(cachedExpenses);
+                    appSettings = JSON.parse(cachedSettings);
+                } catch(e) {}
             }
         }
         
+        hideLoading();
         loginView.classList.remove('active-view');
         dashboardView.classList.add('active-view');
         
-        // Always update dashboard immediately (shows empty if no data)
+        populateDropdowns();
         updateDashboard();
         
-        // Fetch fresh data in the background silently
-        fetchDataInBackground(pin);
     } else {
         loginError.innerText = "Invalid PIN";
     }
@@ -165,7 +176,7 @@ const fetchDataInBackground = async (pin) => {
 
 // Prefetch data immediately when the app loads to save time
 document.addEventListener('DOMContentLoaded', () => {
-    fetchDataInBackground("0488");
+    prefetchPromise = fetchDataInBackground("0488");
 });
 
 const populateDropdowns = () => {
@@ -388,10 +399,27 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
     
     if (deleteBtn) {
         const row = deleteBtn.getAttribute('data-row');
+        const expToDelete = expenses.find(e => e.row == row);
+        
         if (confirm("Are you sure you want to delete this expense?")) {
             showLoading("Deleting Expense...");
             try {
-                const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'delete', row: parseInt(row) });
+                const params = new URLSearchParams({ 
+                    pin: userPin, 
+                    profile: currentProfile, 
+                    action: 'delete', 
+                    row: parseInt(row)
+                });
+                
+                // Add verification data to prevent deleting the wrong row if out of sync
+                if (expToDelete) {
+                    params.append('date', expToDelete['Date'] || '');
+                    params.append('amount', expToDelete['Amount'] || '');
+                    params.append('paidFrom', expToDelete['Paid From'] || '');
+                    params.append('category', expToDelete['Category'] || '');
+                    params.append('description', expToDelete['Description'] || '');
+                }
+                
                 const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
                 const result = await response.json();
                 if (result.status === "error") {
