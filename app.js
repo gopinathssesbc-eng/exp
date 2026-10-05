@@ -99,36 +99,77 @@ loginBtn.addEventListener('click', async () => {
         return;
     }
     
-    loginError.innerText = "";
-    showLoading("Authenticating...");
+    const FRONTEND_PIN = "0488"; // Hardcoded for instant verification
+    const savedPin = localStorage.getItem('appPin');
+    let hasLocalData = false;
+    
+    if (pin === FRONTEND_PIN || savedPin === pin) {
+        userPin = pin;
+        loginError.innerText = "";
+        
+        // Load cached data if available for instant display
+        const cachedExpenses = localStorage.getItem('appExpenses');
+        const cachedSettings = localStorage.getItem('appSettings');
+        if (cachedExpenses && cachedSettings) {
+            expenses = JSON.parse(cachedExpenses);
+            appSettings = JSON.parse(cachedSettings);
+            populateDropdowns();
+            hasLocalData = true;
+        }
+        
+        loginView.classList.remove('active-view');
+        dashboardView.classList.add('active-view');
+        
+        if (hasLocalData) {
+            updateDashboard();
+        } else {
+            showLoading("Loading data from server...");
+        }
+    } else {
+        loginError.innerText = "";
+        showLoading("Authenticating...");
+    }
     
     try {
-        // Send a GET request to check PIN and fetch initial data
+        // Fetch fresh data in the background (or foreground if first login)
         const response = await fetch(`${SCRIPT_URL}?profile=${currentProfile}&pin=${pin}`);
         const result = await response.json();
         
         if (result.status === "error") {
-            loginError.innerText = result.error || "Authentication failed.";
+            if (pin === FRONTEND_PIN || savedPin === pin) {
+                handleLogout(); // Force logout if PIN changed on server
+                loginError.innerText = result.error || "Authentication failed. Please login again.";
+            } else {
+                loginError.innerText = result.error || "Authentication failed.";
+            }
             hideLoading();
             return;
         }
         
         // Success
         userPin = pin;
+        localStorage.setItem('appPin', pin);
+        localStorage.setItem('appExpenses', JSON.stringify(result.data || []));
+        localStorage.setItem('appSettings', JSON.stringify(result.settings || { paidFrom: [], categories: [] }));
+        
         expenses = result.data || [];
         appSettings = result.settings || { paidFrom: [], categories: [] };
         
         populateDropdowns();
         
-        loginView.classList.remove('active-view');
-        dashboardView.classList.add('active-view');
+        if (savedPin !== pin) {
+            loginView.classList.remove('active-view');
+            dashboardView.classList.add('active-view');
+        }
         
-        updateDashboard();
+        updateDashboard(); // Refresh UI with the latest data
         hideLoading();
         
     } catch (error) {
         console.error("Login Error:", error);
-        loginError.innerText = "Network error. Make sure the Web App URL is correct and deployed.";
+        if (savedPin !== pin) {
+            loginError.innerText = "Network error. Check your connection.";
+        }
         hideLoading();
     }
 });
