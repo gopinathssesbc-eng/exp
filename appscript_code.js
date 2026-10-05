@@ -206,11 +206,15 @@ function doPost(e) {
           } catch(e) {}
         }
         
-        const dateMatch = !date || String(sheetDate).trim() === String(date).trim();
-        const amtMatch = !amount || String(r[1]).trim() === String(amount).trim();
-        const catMatch = !category || String(r[3]).trim() === String(category).trim();
+        const dateStr = date ? String(date).substring(0, 10) : "";
+        const sheetDateStr = String(sheetDate).substring(0, 10);
         
-        return dateMatch && amtMatch && catMatch;
+        const dateMatch = !date || sheetDateStr === dateStr;
+        const amtMatch = !amount || String(r[1]).trim() === String(amount).trim();
+        const catMatch = !category || String(r[3]).trim().toLowerCase() === String(category).trim().toLowerCase();
+        const descMatch = !description || String(r[4]).trim().toLowerCase() === String(description).trim().toLowerCase();
+        
+        return dateMatch && amtMatch && catMatch && descMatch;
       };
 
       if (!isMatch(targetRow)) {
