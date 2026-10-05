@@ -215,7 +215,7 @@ function doPost(e) {
         const catMatch = !category || String(r[3]).trim().toLowerCase() === String(category).trim().toLowerCase();
         const descMatch = !description || String(r[4]).trim().toLowerCase() === String(description).trim().toLowerCase();
         
-        return dateMatch && amtMatch && catMatch && descMatch;
+        return amtMatch && catMatch && descMatch;
       };
 
       if (!isMatch(targetRow)) {
