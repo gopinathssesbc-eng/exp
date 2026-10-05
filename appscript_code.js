@@ -234,7 +234,9 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Expense deleted successfully" }))
           .setMimeType(ContentService.MimeType.JSON);
       } else {
-        return ContentService.createTextOutput(JSON.stringify({ status: "error", error: "Could not locate expense to delete. Please refresh." }))
+        const r = (row > 1 && row <= data.length) ? data[row-1] : [];
+        const debugStr = `Row: ${row}, Amt: ${amount} vs ${r[1]}, Cat: ${category} vs ${r[3]}, Desc: ${description} vs ${r[4]}`;
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", error: "Could not locate expense. " + debugStr }))
           .setMimeType(ContentService.MimeType.JSON);
       }
     } else {
