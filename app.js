@@ -150,16 +150,21 @@ const fetchDataInBackground = async (pin) => {
         
         if (result.status === "error") {
             console.error("Background sync error:", result.error);
+            alert("Sync error: " + result.error); // Show error to user
             return;
         }
         
-        // Success
-        localStorage.setItem('appPin', pin);
-        localStorage.setItem('appExpenses', JSON.stringify(result.data || []));
-        localStorage.setItem('appSettings', JSON.stringify(result.settings || { paidFrom: [], categories: [] }));
-        
+        // Success: update state FIRST so UI doesn't break if localStorage throws
         expenses = result.data || [];
         appSettings = result.settings || { paidFrom: [], categories: [] };
+        
+        try {
+            localStorage.setItem('appPin', pin);
+            localStorage.setItem('appExpenses', JSON.stringify(expenses));
+            localStorage.setItem('appSettings', JSON.stringify(appSettings));
+        } catch (storageError) {
+            console.warn("Could not save to localStorage", storageError);
+        }
         
         // Update UI only if the user is already on the dashboard
         if (dashboardView.classList.contains('active-view')) {
@@ -169,6 +174,7 @@ const fetchDataInBackground = async (pin) => {
         
     } catch (error) {
         console.error("Background sync failed:", error);
+        alert("Failed to sync data with Google Sheets. Please check your internet connection or URL.");
     }
 };
 
@@ -410,8 +416,8 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
                 });
                 
                 // Add verification data to prevent deleting the wrong row if out of sync
+                // NOTE: 'date' is deliberately omitted because ISO string formats often mismatch with Google Apps Script internal dates.
                 if (expToDelete) {
-                    params.append('date', expToDelete['Date'] || '');
                     params.append('amount', expToDelete['Amount'] || '');
                     params.append('paidFrom', expToDelete['Paid From'] || '');
                     params.append('category', expToDelete['Category'] || '');
