@@ -1,3 +1,16 @@
+
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCIPB8nUHY-TuKJyqit_dT8BpOoLLkDuSI",
+  authDomain: "expense-manager-f6da3.firebaseapp.com",
+  projectId: "expense-manager-f6da3",
+  storageBucket: "expense-manager-f6da3.firebasestorage.app",
+  messagingSenderId: "89696367981",
+  appId: "1:89696367981:web:7f8416674a199fe78e5664"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 // REPLACE THIS URL WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyHUr86vmYWZFi4gBDKkq15wZL1rG4UdLHDNY1gXqBgvjfZec9DSPJpu6FHyFsWLL-L/exec";
 
@@ -145,36 +158,59 @@ loginBtn.addEventListener('click', async () => {
 
 const fetchDataInBackground = async (pin) => {
     try {
-        const response = await fetch(`${SCRIPT_URL}?profile=${currentProfile}&pin=${pin}`);
-        const result = await response.json();
+        let snapshot = await db.collection("expenses").where("profile", "==", currentProfile).get();
         
-        if (result.status === "error") {
-            console.error("Background sync error:", result.error);
-            alert("Sync error: " + result.error); // Show error to user
-            return;
+        if (snapshot.empty) {
+            console.log("Firestore is empty, migrating from Google Sheets...");
+            const response = await fetch(`${SCRIPT_URL}?profile=${currentProfile}&pin=${pin}`);
+            const result = await response.json();
+            
+            if (result.status === "success" && result.data) {
+                const batch = db.batch();
+                result.data.forEach(exp => {
+                    const docRef = db.collection("expenses").doc();
+                    batch.set(docRef, { ...exp, profile: currentProfile });
+                });
+                
+                const settingsRef = db.collection("settings").doc(currentProfile);
+                batch.set(settingsRef, result.settings || { paidFrom: [], categories: [] });
+                
+                await batch.commit();
+                console.log("Migration complete!");
+                snapshot = await db.collection("expenses").where("profile", "==", currentProfile).get();
+            }
         }
         
-        // Success: update state FIRST so UI doesn't break if localStorage throws
-        expenses = result.data || [];
-        appSettings = result.settings || { paidFrom: [], categories: [] };
+        expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        const settingsDoc = await db.collection("settings").doc(currentProfile).get();
+        appSettings = settingsDoc.exists ? settingsDoc.data() : { paidFrom: [], categories: [] };
         
         try {
             localStorage.setItem('appPin', pin);
             localStorage.setItem('appExpenses', JSON.stringify(expenses));
             localStorage.setItem('appSettings', JSON.stringify(appSettings));
-        } catch (storageError) {
-            console.warn("Could not save to localStorage", storageError);
-        }
+        } catch (e) {}
         
-        // Update UI only if the user is already on the dashboard
         if (dashboardView.classList.contains('active-view')) {
             populateDropdowns();
-            updateDashboard(); // Refresh UI with the latest data seamlessly
+            updateDashboard();
+        }
+        
+        // Trigger Daily Sync to Google Sheets
+        const syncDoc = await db.collection("metadata").doc("sync").get();
+        const lastSync = syncDoc.exists ? syncDoc.data().lastSync : 0;
+        const now = Date.now();
+        if (now - lastSync > 86400000) {
+            console.log("Triggering daily sync to Google Sheets...");
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ profile: currentProfile, pin: pin, action: 'full_sync', expenses: expenses, settings: appSettings })
+            }).then(() => db.collection("metadata").doc("sync").set({ lastSync: now })).catch(console.error);
         }
         
     } catch (error) {
-        console.error("Background sync failed:", error);
-        alert("Failed to sync data with Google Sheets. Please check your internet connection or URL.");
+        console.error("Firebase fetch failed:", error);
     }
 };
 
@@ -373,7 +409,7 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
     
     if (editBtn) {
         const row = editBtn.getAttribute('data-row');
-        const exp = expenses.find(e => e.row == row);
+        const exp = expenses.find(e => e.id == row);
         if (exp) {
             editingRowIndex = row;
             document.querySelector('#add-modal h2').innerText = 'Edit Expense';
@@ -403,7 +439,7 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
     
     if (deleteBtn) {
         const row = deleteBtn.getAttribute('data-row');
-        const expToDelete = expenses.find(e => e.row == row);
+        const expToDelete = expenses.find(e => e.id == row);
         
         if (confirm("Are you sure you want to delete this expense?")) {
             showLoading("Deleting Expense...");
@@ -429,13 +465,8 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
                 if (result.status === "error") {
                     alert("Error deleting expense: " + (result.error || "Unknown error"));
                 } else {
-                    expenses = expenses.filter(exp => exp.row != row);
-                    // Fix row indices since Google Sheets shifts remaining rows up by 1
-                    expenses.forEach(exp => {
-                        if (exp.row > parseInt(row)) {
-                            exp.row -= 1;
-                        }
-                    });
+                    expenses = expenses.filter(exp => exp.id != row);
+                    
                     
                     updateDashboard();
                     

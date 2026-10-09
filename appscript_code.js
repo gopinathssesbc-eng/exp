@@ -184,7 +184,38 @@ function doPost(e) {
     const { date, amount, paidFrom, category, description } = requestData;
     const row = requestData.row ? parseInt(requestData.row, 10) : null;
 
-    if (action === 'edit' && row) {
+    if (action === 'full_sync') {
+      const expenses = requestData.expenses || [];
+      const settings = requestData.settings || { paidFrom: [], categories: [] };
+      
+      sheet.clear();
+      sheet.appendRow(['Date', 'Amount', 'Paid From', 'Category', 'Description']);
+      sheet.getRange(1, 1, 1, 5).setFontWeight("bold");
+      
+      const rows = expenses.map(exp => [
+        exp.Date, exp.Amount, exp['Paid From'], exp.Category, exp.Description
+      ]);
+      if (rows.length > 0) {
+        sheet.getRange(2, 1, rows.length, 5).setValues(rows);
+      }
+      
+      // Update settings
+      const adminSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(auth.profile.adminSheet);
+      const pfRange = adminSheet.getRange(3, 1, Math.max(1, adminSheet.getMaxRows() - 2), 1);
+      pfRange.clearContent();
+      if (settings.paidFrom.length > 0) {
+        adminSheet.getRange(3, 1, settings.paidFrom.length, 1).setValues(settings.paidFrom.map(v => [v]));
+      }
+      const catRange = adminSheet.getRange(3, 2, Math.max(1, adminSheet.getMaxRows() - 2), 1);
+      catRange.clearContent();
+      if (settings.categories.length > 0) {
+        adminSheet.getRange(3, 2, settings.categories.length, 1).setValues(settings.categories.map(v => [v]));
+      }
+      CacheService.getScriptCache().remove(auth.profile.adminSheet);
+      
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Sync complete" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'edit' && row) {
       if (row > sheet.getMaxRows() || row < 2) {
          return ContentService.createTextOutput(JSON.stringify({ status: "error", error: "Row out of bounds for edit. Please refresh." }))
           .setMimeType(ContentService.MimeType.JSON);
