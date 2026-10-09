@@ -825,6 +825,7 @@ addExpenseForm.addEventListener('submit', async (e) => {
         description: desc
     };
     
+    const isEdit = !!editingRowIndex;
     showLoading(isEdit ? "Updating..." : "Adding...");
     try {
         if (isEdit) {
