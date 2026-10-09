@@ -446,43 +446,15 @@ document.getElementById('app-container').addEventListener('click', async (e) => 
         if (confirm("Are you sure you want to delete this expense?")) {
             showLoading("Deleting Expense...");
             try {
-                const params = new URLSearchParams({ 
-                    pin: userPin, 
-                    profile: currentProfile, 
-                    action: 'delete', 
-                    row: parseInt(row)
-                });
-                
-                // Add verification data to prevent deleting the wrong row if out of sync
-                // NOTE: 'date' is deliberately omitted because ISO string formats often mismatch with Google Apps Script internal dates.
-                if (expToDelete) {
-                    params.append('amount', expToDelete['Amount'] || '');
-                    params.append('paidFrom', expToDelete['Paid From'] || '');
-                    params.append('category', expToDelete['Category'] || '');
-                    params.append('description', expToDelete['Description'] || '');
-                }
-                
-                const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
-                const result = await response.json();
-                if (result.status === "error") {
-                    alert("Error deleting expense: " + (result.error || "Unknown error"));
-                } else {
-                    expenses = expenses.filter(exp => exp.id != row);
-                    
-                    
-                    updateDashboard();
-                    
-                    // If all expenses modal is open, update it too
-                    if (allExpensesModal.classList.contains('show')) {
-                        renderExpenses([...expenses].reverse(), allExpensesList);
-                    }
-                    
-                    // Trigger a silent background sync to ensure perfection
-                    fetchDataInBackground(userPin);
+                await db.collection("expenses").doc(row).delete();
+                expenses = expenses.filter(exp => exp.id != row);
+                updateDashboard();
+                if (allExpensesModal.classList.contains('show')) {
+                    renderExpenses([...expenses].reverse(), allExpensesList);
                 }
             } catch (error) {
                 console.error("Error deleting expense:", error);
-                alert("Failed to delete expense. Network error.");
+                alert("Failed to delete expense.");
             } finally {
                 hideLoading();
             }
@@ -855,67 +827,65 @@ addExpenseForm.addEventListener('submit', async (e) => {
         description: desc
     };
     
-    // Optimistic UI Update for faster perceived performance
-    const isEdit = !!editingRowIndex;
-    
-    if (isEdit) {
-        const expIndex = expenses.findIndex(e => e.row == editingRowIndex);
-        if (expIndex !== -1) {
-            expenses[expIndex] = {
-                ...expenses[expIndex],
+    showLoading(isEdit ? "Updating..." : "Adding...");
+    try {
+        if (isEdit) {
+            await db.collection("expenses").doc(editingRowIndex).update({
+                Date: date,
+                Amount: parseFloat(amount),
+                'Paid From': account,
+                Category: category,
+                Description: desc
+            });
+            const expIndex = expenses.findIndex(e => e.id == editingRowIndex);
+            if (expIndex !== -1) {
+                expenses[expIndex] = {
+                    ...expenses[expIndex],
+                    'Date': date,
+                    'Amount': amount,
+                    'Paid From': account,
+                    'Category': category,
+                    'Description': desc
+                };
+            }
+        } else {
+            const docRef = await db.collection("expenses").add({
+                profile: currentProfile,
+                Date: date,
+                Amount: parseFloat(amount),
+                'Paid From': account,
+                Category: category,
+                Description: desc,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            expenses.push({
+                id: docRef.id,
                 'Date': date,
                 'Amount': amount,
                 'Paid From': account,
                 'Category': category,
                 'Description': desc
-            };
+            });
+            expenses.sort((a, b) => new Date(a.Date) - new Date(b.Date));
         }
-    } else {
-        let nextRow = 2;
-        if (expenses.length > 0) {
-            nextRow = Math.max(...expenses.map(e => e.row || 0)) + 1;
-        }
-        expenses.push({
-            'row': nextRow,
-            'Date': date,
-            'Amount': amount,
-            'Paid From': account,
-            'Category': category,
-            'Description': desc
-        });
-    }
-    
-    updateDashboard();
-    
-    if (allExpensesModal.classList.contains('show')) {
-        renderExpenses([...expenses].reverse(), allExpensesList);
-    }
-    
-    addExpenseForm.reset();
-    addModal.classList.remove('show');
-    document.body.style.overflow = '';
-    
-    document.querySelector('#success-modal h2').innerText = isEdit ? 'Update Successful' : 'Add Successful';
-    document.querySelector('#success-modal p').innerText = isEdit ? 'Your expense has been updated.' : 'Your expense has been added.';
-    successModal.classList.add('show');
-    document.body.style.overflow = 'hidden';
-
-    // Background server update using GET to avoid CORS/redirect issues
-    try {
-        const params = new URLSearchParams();
-        for (const key in payload) {
-            params.append(key, payload[key]);
-        }
-        const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
-        const result = await response.json();
         
-        if (result.status === "error") {
-            console.error("Error saving expense:", result.error);
-            alert("Failed to sync expense to server: " + result.error);
+        updateDashboard();
+        if (allExpensesModal.classList.contains('show')) {
+            renderExpenses([...expenses].reverse(), allExpensesList);
         }
+        addExpenseForm.reset();
+        addModal.classList.remove('show');
+        document.body.style.overflow = '';
+        
+        document.querySelector('#success-modal h2').innerText = isEdit ? 'Update Successful' : 'Add Successful';
+        document.querySelector('#success-modal p').innerText = isEdit ? 'Your expense has been updated.' : 'Your expense has been added.';
+        successModal.classList.add('show');
+        document.body.style.overflow = 'hidden';
     } catch (error) {
-        console.error("Error submitting expense:", error);
-        alert("Failed to submit expense. Network error.");
+        console.error("Error saving expense:", error);
+        alert("Failed to save to Firebase.");
+    } finally {
+        hideLoading();
     }
 });
 
@@ -966,10 +936,8 @@ changePwdForm.addEventListener('submit', async (e) => {
     showLoading("Updating Password...");
     
     try {
-        const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'change_password', new_pin: newPin });
-        const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
-        const result = await response.json();
-        
+        await db.collection("settings").doc(currentProfile).set(appSettings);
+        const result = { status: "success" };
         if (result.status === "error") {
             pwdError.innerText = result.error || "Failed to update password.";
         } else {
@@ -1036,10 +1004,8 @@ addOptionForm.addEventListener('submit', async (e) => {
     
     showLoading("Adding Option...");
     try {
-        const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'add_setting', setting_type: currentManagingOption, value: newVal });
-        const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
-        const result = await response.json();
-        
+        await db.collection("settings").doc(currentProfile).set(appSettings);
+        const result = { status: "success" };
         if (result.status === "error") {
             alert("Error adding option: " + (result.error || "Unknown error"));
         } else {
@@ -1068,11 +1034,9 @@ manageOptionsList.addEventListener('click', async (e) => {
         if (confirm(`Are you sure you want to delete "${val}"?`)) {
             showLoading("Deleting Option...");
             try {
-                const params = new URLSearchParams({ pin: userPin, profile: currentProfile, action: 'delete_setting', setting_type: currentManagingOption, value: val });
-                const response = await fetch(`${SCRIPT_URL}?${params.toString()}`);
-                const result = await response.json();
-                
-                if (result.status === "error") {
+                await db.collection("settings").doc(currentProfile).set(appSettings);
+        const result = { status: "success" };
+        if (result.status === "error") {
                     alert("Error deleting option: " + (result.error || "Unknown error"));
                 } else {
                     if (currentManagingOption === 'paid_from') {
