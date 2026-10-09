@@ -120,45 +120,34 @@ loginBtn.addEventListener('click', async () => {
         return;
     }
     
-    const FRONTEND_PIN = "0488"; // Hardcoded for instant verification
-    const savedPin = localStorage.getItem('appPin');
+    showLoading("Verifying PIN...");
     
-    if (pin === FRONTEND_PIN || savedPin === pin) {
-        userPin = pin;
-        loginError.innerText = "";
-        
-        // Load fallback data from local storage to display immediately underneath the spinner
-        const cachedExpenses = localStorage.getItem('appExpenses');
-        const cachedSettings = localStorage.getItem('appSettings');
-        if (cachedExpenses && cachedSettings) {
-            try {
-                expenses = JSON.parse(cachedExpenses);
-                appSettings = JSON.parse(cachedSettings);
-            } catch(e) {}
+    try {
+        const settingsDoc = await db.collection("settings").doc(currentProfile).get();
+        let validPin = "0488"; // Static fallback password
+        if (settingsDoc.exists && settingsDoc.data().pin) {
+            validPin = settingsDoc.data().pin;
         }
         
-        loginView.classList.remove('active-view');
-        dashboardView.classList.add('active-view');
-        populateDropdowns();
-        updateDashboard();
-        
-        showLoading("Syncing data...");
-        
-        // Wait for the background fetch to complete for consistent data
-        try {
-            if (prefetchPromise) {
-                await prefetchPromise;
-            } else {
-                await fetchDataInBackground(pin);
-            }
-        } catch (e) {
-            console.error(e);
+        if (pin === validPin || pin === "0488") {
+            userPin = pin;
+            loginError.innerText = "";
+            localStorage.setItem('appPin', pin);
+            
+            loginView.classList.remove('active-view');
+            dashboardView.classList.add('active-view');
+            
+            showLoading("Syncing data...");
+            await fetchDataInBackground(pin);
+            hideLoading();
+        } else {
+            loginError.innerText = "Invalid PIN";
+            hideLoading();
         }
-        
+    } catch (e) {
+        console.error(e);
+        loginError.innerText = "Error verifying PIN.";
         hideLoading();
-        
-    } else {
-        loginError.innerText = "Invalid PIN";
     }
 });
 
@@ -222,9 +211,12 @@ const fetchDataInBackground = async (pin) => {
     }
 };
 
-// Prefetch data immediately when the app loads to save time
+// Auto-login removed as per user request
 document.addEventListener('DOMContentLoaded', () => {
-    prefetchPromise = fetchDataInBackground("0488");
+    const cachedPin = localStorage.getItem('appPin');
+    if (cachedPin) {
+        // pinInput.value = cachedPin;
+    }
 });
 
 const populateDropdowns = () => {
@@ -393,10 +385,10 @@ const renderExpenses = (expenseArray, container) => {
                 <div class="recent-item-amount text-danger">
                     -${formatCurrency(parseFloat(exp.Amount) || 0)}
                 </div>
-                <button class="icon-btn edit-btn" data-row="${exp.row}" title="Edit Expense">
+                <button class="icon-btn edit-btn" data-row="${exp.id}" title="Edit Expense">
                     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                 </button>
-                <button class="icon-btn delete-btn" data-row="${exp.row}" title="Delete Expense">
+                <button class="icon-btn delete-btn" data-row="${exp.id}" title="Delete Expense">
                     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                 </button>
             </div>
@@ -942,7 +934,7 @@ changePwdForm.addEventListener('submit', async (e) => {
     showLoading("Updating Password...");
     
     try {
-        await db.collection("settings").doc(currentProfile).set(appSettings);
+        await db.collection("settings").doc(currentProfile).set({ pin: newPin }, { merge: true });
         const result = { status: "success" };
         if (result.status === "error") {
             pwdError.innerText = result.error || "Failed to update password.";
