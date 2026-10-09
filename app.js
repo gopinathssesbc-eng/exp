@@ -182,6 +182,8 @@ const fetchDataInBackground = async (pin) => {
         }
         
         expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Sort ascending by Date so that [...expenses].reverse() puts the newest at the top
+        expenses.sort((a, b) => new Date(a.Date) - new Date(b.Date));
         
         const settingsDoc = await db.collection("settings").doc(currentProfile).get();
         appSettings = settingsDoc.exists ? settingsDoc.data() : { paidFrom: [], categories: [] };
