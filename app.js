@@ -86,13 +86,19 @@ const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 };
 
-// Show/Hide Loading
+let loadingTimeout;
 const showLoading = (text = "Loading...") => {
     loadingText.innerText = text;
     loadingOverlay.classList.remove('hidden');
+    clearTimeout(loadingTimeout);
+    loadingTimeout = setTimeout(() => {
+        hideLoading();
+        console.warn("Loading overlay timed out after 8 seconds");
+    }, 8000);
 };
 
 const hideLoading = () => {
+    clearTimeout(loadingTimeout);
     loadingOverlay.classList.add('hidden');
 };
 
